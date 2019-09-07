@@ -1,0 +1,173 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <style>
+        video {
+            background: #263238;
+            height: 200px;
+            width: 100%;
+        }
+
+        .camera {
+            position: relative;
+        }
+
+        .mark {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            height: 6px;
+            width: 20px;
+            margin-top: -3px;
+            margin-left: -10px;
+            background: #ff0000;
+        }
+
+        .mark::before {
+            content: "";
+            display: block;
+            position: absolute;
+            height: 100%;
+            width: 100%;
+            margin-top: -3px;
+            margin-left: -3px;
+            -moz-transform:rotate(90deg);
+            -webkit-transform:rotate(90deg);
+            background: #ff0000;
+        }
+    </style>
+</head>
+<body>
+<div class="camera">
+    <video autoplay></video>
+    <div class="mark"></div>
+</div>
+
+<input type="range" class="form-control-range my-2" hidden>
+
+<div id="output" class="m-3">
+    <div id="error" class="text-danger"></div>
+    <pre id="log"></pre>
+    <div id="answer" class="text-success"></div>
+</div>
+
+<div class="form">
+    <div>
+        <label>x</label><input type="number" name="ans-x" id="ans-x">
+    </div>
+    <div>
+        <label>A up</label><input type="number" id="ans-a-up">
+    </div>
+    <div>
+        <label>A down</label><input type="number" id="ans-a-down">
+    </div>
+    <div>
+        <label>B up</label><input type="number" id="ans-b-up">
+    </div>
+    <div>
+        <label>B down</label><input type="number" id="ans-b-down">
+    </div>
+    <button id="submit">Submit</button>
+</div>
+
+<script>
+    (function (global) {
+        const logger = (target) => {
+            return function () {
+                const content = Array.prototype.slice.call(arguments).map(argument => {
+                    return typeof argument === 'string' ? argument : JSON.stringify(argument);
+                }).join(' ');
+                document.querySelector(target).textContent = content;
+            }
+        };
+
+        global.output = {
+            log: logger('#log'),
+            error: logger('#error'),
+            answer: logger('#answer')
+        };
+    })(window);
+</script>
+
+<script>
+    window.addEventListener('deviceorientation', function(event) {
+        output.log({
+            tilt: (event.beta - 90).toFixed(1),
+            roll: event.gamma.toFixed(1)
+        })
+    });
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+        .then(async mediaStream => {
+            document.querySelector('video').srcObject = mediaStream;
+
+            const sleep = (ms = 0) => new Promise(r => setTimeout(r, ms));
+            await sleep(1000);
+
+
+            const track = mediaStream.getVideoTracks()[0];
+            const capabilities = track.getCapabilities();
+            const settings = track.getSettings();
+
+            const input = document.querySelector('input[type="range"]');
+
+            if (!('zoom' in capabilities)) {
+                return Promise.reject('Zoom is not supported by ' + track.label);
+            }
+
+            input.min = capabilities.zoom.min;
+            input.max = capabilities.zoom.max;
+            input.step = capabilities.zoom.step;
+            input.value = settings.zoom;
+            input.oninput = function(event) {
+                track.applyConstraints({ advanced: [ {zoom: event.target.value} ]});
+            }
+            input.hidden = false;
+        })
+        .catch(error => {
+            output.error(error.name || error)
+        });
+
+    document.querySelector('#submit').addEventListener('click', function (event) {
+        event.preventDefault();
+        let x = document.querySelector('#ans-x').value;
+        let aUp = document.querySelector('#ans-a-up').value;
+        let aDown = document.querySelector('#ans-a-down').value;
+        let bUp = document.querySelector('#ans-b-up').value;
+        let bDown = document.querySelector('#ans-b-down').value;
+
+        if (!x || !aUp || !bUp) {
+            return;
+        }
+
+        aDown = aDown || 0;
+        bDown = bDown || 0;
+
+        let a = [];
+        let b = [];
+
+        x = Number.parseFloat(x);
+        a[0] = Number.parseFloat(aUp);
+        a[1] = Number.parseFloat(aDown);
+        b[0] = Number.parseFloat(bUp);
+        b[1] = Number.parseFloat(bDown);
+
+        const PI = Math.PI;
+        const h = [0, 1].map(i => {
+            if (a[i] === 0.0  && b[i] === 0.0) return 0.0;
+            const A = a[i] * (PI / 180);
+            const B = PI - (b[i] * (PI / 180));
+            const C = PI - A - B;
+            return x * Math.sin(A) * Math.sin(B) / Math.sin(C);
+        });
+
+        output.answer(Math.abs((h[0] + h[1])).toFixed(2));
+    });
+</script>
+
+</body>
+</html>
